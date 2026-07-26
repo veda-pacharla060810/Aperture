@@ -4,12 +4,9 @@ import cors from 'cors';
 import * as cheerio from 'cheerio';
 
 const PORT = process.env.PORT || 3001;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
-const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
 const CATEGORY_NAMES = ['Identity', 'Location', 'Device', 'Activity', 'Preferences'];
-const STAGE_NAMES = ['User', 'Website', 'Analytics', 'Service Providers', 'Advertising / Partners'];
 
 const CANDIDATE_PATHS = [
   '/privacy', '/privacy-policy', '/privacy-notice', '/legal/privacy',
@@ -17,10 +14,9 @@ const CANDIDATE_PATHS = [
 ];
 
 const FETCH_TIMEOUT_MS = 9000;
-const MAX_POLICY_CHARS = 14000;
+const MAX_POLICY_CHARS = 20000;
 
-// simple in-memory cache so re-analyzing the same domain in one server
-// session doesn't re-spend API calls
+// in-memory cache so re-analyzing the same domain doesn't re-fetch every time
 const cache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 30;
 
@@ -29,15 +25,11 @@ app.use(cors({ origin: ALLOWED_ORIGIN === '*' ? true : ALLOWED_ORIGIN.split(',')
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.json({ ok: true, service: 'aperture-server' });
+  res.json({ ok: true, service: 'aperture-server', engine: 'heuristic (no AI, no external API calls)' });
 });
 
 app.post('/api/analyze', async (req, res) => {
   try {
-    if (!ANTHROPIC_API_KEY) {
-      return res.status(500).json({ error: 'server_misconfigured', message: 'ANTHROPIC_API_KEY is not set on the server.' });
-    }
-
     const rawUrl = (req.body && req.body.url || '').trim();
     if (!rawUrl) {
       return res.status(400).json({ error: 'missing_url', message: 'No URL was provided.' });
@@ -90,9 +82,9 @@ app.post('/api/analyze', async (req, res) => {
       return res.status(200).json({ error: 'not_found', message: "This site links to a privacy policy, but it didn't contain enough readable text to analyze." });
     }
 
-    // 3. analyze with Claude
-    const analysis = await analyzeWithClaude(target.hostname, policyText);
-    const result = { url: target.hostname, policyUrl, ...analysis };
+    // 3. analyze — pure keyword/pattern rules over the real policy text. No AI, no external API call.
+    const analysis = heuristicAnalyze(policyText);
+    const result = { url: target.hostname, policyUrl, engine: 'heuristic', ...analysis };
 
     cache.set(cacheKey, { data: result, time: Date.now() });
     return res.json(result);
@@ -104,12 +96,10 @@ app.post('/api/analyze', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Aperture server listening on http://localhost:${PORT}`);
-  if (!ANTHROPIC_API_KEY) {
-    console.warn('WARNING: ANTHROPIC_API_KEY is not set. Requests to /api/analyze will fail until it is configured in .env');
-  }
+  console.log('Analysis engine: local keyword/pattern heuristic — no AI model, no external API calls, no cost.');
 });
 
-// ---------------- helpers ----------------
+// ---------------- fetching + text extraction ----------------
 
 function normalizeUrl(raw) {
   let s = raw.trim();
@@ -185,118 +175,128 @@ function extractReadableText(html, maxChars) {
   }
 }
 
-async function analyzeWithClaude(hostname, policyText) {
-  const systemPrompt = `You are a privacy-policy analyst for a product called Aperture. You will be given the raw extracted text of a website's privacy policy (or related legal disclosure) and the site's domain.
+// ---------------- heuristic analyzer (no AI, no external API, all local) ----------------
+//
+// This reads the real, fetched policy text and scores it with plain keyword and
+// pattern matching — the same category of technique used by readability checkers
+// and keyword-based text classifiers. It won't catch nuance the way a language
+// model would, but every number it produces is derived directly and deterministically
+// from that site's actual policy text, with no model call and no cost.
 
-Analyze the text and respond with ONLY a single JSON object — no markdown code fences, no commentary before or after — matching exactly this shape:
+const CATEGORY_KEYWORDS = {
+  Identity: ['name', 'email', 'account', 'sign up', 'sign-up', 'username', 'identify you', 'personal information', 'date of birth', 'phone number', 'full name'],
+  Location: ['location', 'gps', 'geolocat', 'ip address', 'zip code', 'postal code', 'your region', 'your city'],
+  Device: ['device', 'browser', 'operating system', 'device identifier', 'advertising id', 'device information', 'mac address', 'ip address'],
+  Activity: ['browsing', 'usage data', 'log data', 'clickstream', 'pages you visit', 'interactions', 'analytics', 'activity on our', 'session', 'search queries'],
+  Preferences: ['preferences', 'personalization', 'personalisation', 'your interests', 'settings', 'recommendation', 'favorite']
+};
 
-{
-  "score": <integer 0-100, how clearly and specifically the policy discloses its actual data practices>,
-  "descriptor": <one plain-language sentence describing the overall transparency level>,
-  "categories": [
-    {"name": "Identity", "level": "Low"|"Moderate"|"High"},
-    {"name": "Location", "level": "Low"|"Moderate"|"High"},
-    {"name": "Device", "level": "Low"|"Moderate"|"High"},
-    {"name": "Activity", "level": "Low"|"Moderate"|"High"},
-    {"name": "Preferences", "level": "Low"|"Moderate"|"High"}
-  ],
-  "stages": <array chosen only from this ordered list: ["User","Website","Analytics","Service Providers","Advertising / Partners"]. Always include "User" and "Website" first. Include later stages only if the text discloses that data actually flows there>,
-  "afterlife": <array of exactly 2 objects, each {"name": one of the 5 category names above (pick the ones judged most sensitive or persistent given the text), "why": short phrase for why it's collected, "consideration": one sentence on the long-term implication}>,
-  "translations": <array of exactly 3 objects, each {"legal": a short paraphrase under 20 words representative of a clause actually present in the text (do not copy verbatim, restate in your own words), "human": a plain-language translation of that clause}>,
-  "clarity": <integer 0-100, how easy the policy is to read and understand>,
-  "control": <integer 0-100, how much real choice or control the policy gives users over their own data>
+const STAGE_KEYWORDS = {
+  Analytics: ['analytics', 'google analytics', 'usage statistics', 'measurement partners'],
+  'Service Providers': ['third party', 'third-party', 'service provider', 'vendors', 'processors', 'business partners'],
+  'Advertising / Partners': ['advertis', 'marketing partner', 'ad network', 'ad partner', 'advertising partners']
+};
+
+const POSITIVE_INDICATORS = [
+  'opt out', 'opt-out', 'unsubscribe', 'delete your data', 'delete your account', 'right to access',
+  'right to delete', 'do not sell', 'gdpr', 'ccpa', 'data protection officer', 'retention period',
+  'contact us at', 'privacy@', 'your rights', 'request a copy', 'export your data'
+];
+const VAGUE_INDICATORS = [
+  'may include', 'may share', 'at our discretion', 'from time to time', 'as necessary',
+  'reasonable measures', 'without limitation', 'among other things', 'subject to change',
+  'business purposes', 'legitimate interest'
+];
+
+const TRIGGER_BANK = [
+  { keywords: ['personaliz', 'customi'], legal: 'The policy states information may be used for personalization.', human: 'This may mean your activity is used to customize what you see.' },
+  { keywords: ['third part', 'third-part'], legal: 'The policy discloses that data may be shared with third parties.', human: 'Your information can be passed to outside companies the site works with.' },
+  { keywords: ['retain', 'retention'], legal: 'The policy mentions a data retention practice.', human: 'Some of your data can be kept for a while — or indefinitely — after you stop using the site.' },
+  { keywords: ['cookie'], legal: 'The policy discusses the use of cookies or similar tracking technologies.', human: 'Small trackers follow what you do on the site, sometimes across other sites too.' },
+  { keywords: ['aggregat', 'de-identif', 'deidentif', 'anonymiz'], legal: 'The policy allows sharing of aggregated or de-identified data.', human: "Your data can be bundled with others' and shared freely, even without your name attached." },
+  { keywords: ['consent', 'by using our', 'by using the service'], legal: 'The policy treats continued use of the site as consent.', human: 'Just visiting the site counts as agreeing, whether you read this or not.' },
+  { keywords: ['update this policy', 'change this policy', 'modify this policy', 'without notice'], legal: 'The policy reserves the right to change without direct notice.', human: 'The rules can change later, and you may not be told when they do.' },
+  { keywords: ['other countries', 'international transfer', 'transferred internationally', 'cross-border', 'cross border'], legal: 'The policy discloses that data may be processed in other countries.', human: 'Your data might leave your country, where different privacy laws may apply.' },
+  { keywords: ['reasonable measures', 'reasonable security', 'commercially reasonable'], legal: 'The policy commits only to "reasonable" security measures.', human: "There's no guarantee of security here — just an effort, not a promise." },
+  { keywords: ['contacts', 'microphone', 'camera', 'media library', 'photo library'], legal: 'The policy mentions access to device contacts or media.', human: "Certain features won't work unless you let the site into parts of your device beyond what's needed." }
+];
+
+const AFTERLIFE_WHY = {
+  Identity: 'Account creation & sign-in access',
+  Location: 'Location-based features',
+  Device: 'Fraud prevention & device recognition',
+  Activity: 'Personalization & analytics',
+  Preferences: 'Customizing your experience'
+};
+const AFTERLIFE_CONSIDERATION = {
+  Identity: 'May remain linked to your identity across sessions and future visits.',
+  Location: 'Creates location-based activity patterns over time.',
+  Device: 'Can be used to recognize you across visits, even without an account.',
+  Activity: 'Builds a behavioral profile that can outlast a single visit.',
+  Preferences: 'Usually lower-risk, but may still be shared with partners.'
+};
+
+function countMatches(lowerText, keywords) {
+  let n = 0;
+  for (const kw of keywords) if (lowerText.includes(kw)) n++;
+  return n;
 }
-
-Base every field only on what the provided text actually supports. Do not invent specifics that are not in the text. If a category is not discussed at all, mark its level "Low" rather than fabricating detail. Never reproduce long verbatim passages from the source text — always paraphrase.`;
-
-  const userMessage = `Site: ${hostname}\n\nExtracted privacy policy text:\n${policyText}`;
-
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 1500,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }]
-    })
-  });
-
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '');
-    throw new Error(`Claude API error ${resp.status}: ${errText}`);
-  }
-
-  const data = await resp.json();
-  const textBlock = (data.content || []).find((b) => b.type === 'text');
-  if (!textBlock) throw new Error('No text content in Claude response');
-
-  const cleaned = textBlock.text.replace(/```json|```/g, '').trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (e) {
-    throw new Error('Could not parse Claude response as JSON');
-  }
-
-  return normalizeAnalysis(parsed);
+function levelFromCount(n) {
+  if (n >= 2) return 'High';
+  if (n === 1) return 'Moderate';
+  return 'Low';
 }
+function levelRank(l) { return l === 'High' ? 2 : (l === 'Moderate' ? 1 : 0); }
+function clampNum(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
-function normalizeAnalysis(parsed) {
-  const score = clampInt(parsed.score, 0, 100, 50);
-  const clarity = clampInt(parsed.clarity, 0, 100, score);
-  const control = clampInt(parsed.control, 0, 100, Math.max(0, score - 15));
+function heuristicAnalyze(policyText) {
+  const lower = policyText.toLowerCase();
 
-  let categories = Array.isArray(parsed.categories) ? parsed.categories : [];
-  categories = CATEGORY_NAMES.map((name) => {
-    const found = categories.find((c) => c && c.name === name);
-    const level = found && ['Low', 'Moderate', 'High'].includes(found.level) ? found.level : 'Low';
-    return { name, level };
-  });
-
-  let stages = Array.isArray(parsed.stages) ? parsed.stages.filter((s) => STAGE_NAMES.includes(s)) : [];
-  if (!stages.includes('User')) stages.unshift('User');
-  if (!stages.includes('Website')) stages.splice(1, 0, 'Website');
-  stages = STAGE_NAMES.filter((s) => stages.includes(s));
-  if (stages.length < 2) stages = ['User', 'Website'];
-
-  let afterlife = Array.isArray(parsed.afterlife) ? parsed.afterlife.slice(0, 2) : [];
-  afterlife = afterlife.map((a) => ({
-    name: CATEGORY_NAMES.includes(a && a.name) ? a.name : 'Identity',
-    why: (a && a.why) || 'Not specified by the policy',
-    consideration: (a && a.consideration) || 'This data may persist beyond a single visit.'
+  const categories = CATEGORY_NAMES.map((name) => ({
+    name,
+    level: levelFromCount(countMatches(lower, CATEGORY_KEYWORDS[name]))
   }));
-  while (afterlife.length < 2) {
-    afterlife.push({ name: 'Identity', why: 'Account access', consideration: 'May remain connected to your digital identity.' });
-  }
 
-  let translations = Array.isArray(parsed.translations) ? parsed.translations.slice(0, 3) : [];
-  translations = translations.map((t) => ({
-    legal: (t && t.legal) || 'Policy language on this point was unclear.',
-    human: (t && t.human) || 'This point was not stated plainly enough to translate confidently.'
+  const stages = ['User', 'Website'];
+  if (STAGE_KEYWORDS.Analytics.some((kw) => lower.includes(kw))) stages.push('Analytics');
+  if (STAGE_KEYWORDS['Service Providers'].some((kw) => lower.includes(kw))) stages.push('Service Providers');
+  if (STAGE_KEYWORDS['Advertising / Partners'].some((kw) => lower.includes(kw))) stages.push('Advertising / Partners');
+
+  const posCount = countMatches(lower, POSITIVE_INDICATORS);
+  const vagueCount = countMatches(lower, VAGUE_INDICATORS);
+
+  const score = Math.round(clampNum(50 + posCount * 5 - vagueCount * 4, 15, 95));
+
+  const sentences = policyText.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0);
+  const avgWordsPerSentence = sentences.length
+    ? sentences.reduce((sum, s) => sum + s.split(/\s+/).length, 0) / sentences.length
+    : 18;
+  const clarity = Math.round(clampNum(100 - Math.max(0, avgWordsPerSentence - 14) * 2.5 - vagueCount * 2, 15, 95));
+
+  const control = Math.round(clampNum(30 + posCount * 8 - vagueCount * 3, 5, 95));
+
+  const ranked = categories.slice().sort((a, b) => levelRank(b.level) - levelRank(a.level));
+  const afterlife = ranked.slice(0, 2).map((c) => ({
+    name: c.name,
+    why: AFTERLIFE_WHY[c.name],
+    consideration: AFTERLIFE_CONSIDERATION[c.name]
   }));
-  while (translations.length < 3) {
-    translations.push({ legal: 'No further specific clauses were clearly extractable.', human: 'The policy did not go into more detail here.' });
+
+  const matchedTriggers = TRIGGER_BANK.filter((t) => t.keywords.some((kw) => lower.includes(kw)));
+  let translations = matchedTriggers.slice(0, 3).map((t) => ({ legal: t.legal, human: t.human }));
+  if (translations.length < 3) {
+    const remaining = TRIGGER_BANK.filter((t) => !matchedTriggers.includes(t));
+    for (const t of remaining) {
+      if (translations.length >= 3) break;
+      translations.push({ legal: t.legal, human: t.human });
+    }
   }
 
-  return {
-    score,
-    descriptor: typeof parsed.descriptor === 'string' ? parsed.descriptor : 'This site\'s transparency could not be fully characterized.',
-    categories,
-    stages,
-    afterlife,
-    translations,
-    clarity,
-    control
-  };
-}
+  const descriptor = score >= 75
+    ? 'This site is generally clear about what it collects and why.'
+    : score >= 50
+      ? 'This site discloses some practices, but leaves real gaps unstated.'
+      : "This site's disclosures are thin — much of its practice is left unstated.";
 
-function clampInt(n, lo, hi, fallback) {
-  const v = Math.round(Number(n));
-  if (Number.isNaN(v)) return fallback;
-  return Math.max(lo, Math.min(hi, v));
+  return { score, descriptor, categories, stages, afterlife, translations, clarity, control };
 }
