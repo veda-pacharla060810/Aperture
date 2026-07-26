@@ -555,8 +555,9 @@
           <input type="text" id="compare-input-b" placeholder="Website B…">
         </div>
       </div>
-      <div style="margin-top:20px;">
+      <div style="margin-top:20px; display:flex; align-items:center; gap:16px;">
         <button class="btn" id="compare-btn">Compare</button>
+        <span class="scan-status" id="compare-status" style="margin-bottom:0;"></span>
       </div>
 
       <div class="card compare-result-hidden" style="margin-top:36px; overflow-x:auto;" id="compare-result">
@@ -595,8 +596,8 @@
   <section class="screen" id="screen-error">
     <div class="error-stage">
       <div class="iris-wrap" data-percent="8"><div class="iris-glow"></div></div>
-      <h2 class="display">We couldn't find enough public information.</h2>
-      <p class="lede">This does not mean the website is unsafe. It means transparency is limited — Aperture couldn't locate a published privacy policy or cookie notice to analyze.</p>
+      <h2 class="display" id="error-title">We couldn't find enough public information.</h2>
+      <p class="lede" id="error-message">This does not mean the website is unsafe. It means transparency is limited — Aperture couldn't locate a published privacy policy or cookie notice to analyze.</p>
       <button class="btn" data-target="landing">Try another URL</button>
     </div>
   </section>
@@ -716,111 +717,66 @@
     hero.appendChild(d);
   });
 
-  // ---------- deterministic per-site data ----------
-  // Note: this simulates variation per domain using a seeded generator, since a static
-  // front end can't fetch and read an arbitrary site's real privacy policy (no backend, CORS).
-  // Same URL always produces the same result; different URLs produce different results.
-  function seedFromString(str){
-    let h = 0;
-    for(let i=0;i<str.length;i++){ h = (Math.imul(31,h) + str.charCodeAt(i)) | 0; }
-    return h >>> 0;
+  // ---------- backend integration ----------
+  // Point this at your deployed aperture-server. Defaults to localhost for
+  // local development; override by loading the page with ?api=https://your-server.example.com
+  const API_BASE = (function(){
+    const params = new URLSearchParams(window.location.search);
+    return params.get('api') || 'http://localhost:3001';
+  })();
+
+  const reportCache = new Map(); // hostname -> analysis result
+  let currentReportData = null;
+
+  function normalizeForKey(raw){
+    return (raw || '').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/$/,'') || 'example.com';
   }
-  function mulberry32(a){
-    return function(){
-      let t = a += 0x6D2B79F5;
-      t = Math.imul(t ^ t >>> 15, t | 1);
-      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
-  }
-  function shuffled(rng, arr){
-    const a = arr.slice();
-    for(let i=a.length-1;i>0;i--){
-      const j = Math.floor(rng()*(i+1));
-      const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+
+  async function analyzeSite(rawUrl){
+    const key = normalizeForKey(rawUrl);
+    if(reportCache.has(key)) return reportCache.get(key);
+    const resp = await fetch(API_BASE + '/api/analyze', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({url:key})
+    });
+    const json = await resp.json();
+    if(!resp.ok || json.error){
+      const err = new Error(json.message || "We couldn't find enough public information.");
+      err.code = json.error || 'analysis_failed';
+      throw err;
     }
-    return a;
+    reportCache.set(key, json);
+    return json;
   }
 
-  const CATEGORIES = ['Identity','Location','Device','Activity','Preferences'];
-  const AFTERLIFE_BANK = {
-    Identity:{why:'Account creation & sign-in access', consideration:'May remain linked to your identity across sessions and future visits.'},
-    Location:{why:'Location-based features', consideration:'Creates location-based activity patterns over time.'},
-    Device:{why:'Fraud prevention & device fingerprinting', consideration:'Can be used to recognize you across visits, even without an account.'},
-    Activity:{why:'Personalization & analytics', consideration:'Builds a behavioral profile that can outlast a single visit.'},
-    Preferences:{why:'Customizing your experience', consideration:'Usually lower-risk, but may still be shared with partners.'}
-  };
-  const TRANSLATE_BANK = [
-    {legal:'"We may process information for personalization."', human:'This may mean your activity is used to customize what you see.'},
-    {legal:'"We may share data with trusted third parties for business purposes."', human:'Your information can be passed to outside companies the site works with.'},
-    {legal:'"Certain data may be retained as required by law or legitimate business need."', human:'Some of your data can be kept indefinitely, even after you stop using the site.'},
-    {legal:'"We use cookies and similar technologies to enhance your experience."', human:'Small trackers follow what you do on the site, sometimes across other sites too.'},
-    {legal:'"Aggregated or de-identified data may be shared without restriction."', human:"Your data can be bundled with others' and shared freely, even without your name attached."},
-    {legal:'"By using our services, you consent to this policy."', human:'Just visiting the site counts as agreeing, whether you read this or not.'},
-    {legal:'"We may update this policy at any time without direct notice."', human:'The rules can change later, and you may not be told when they do.'},
-    {legal:'"Information may be transferred and processed in other countries."', human:'Your data might leave your country, where different privacy laws may apply.'},
-    {legal:'"We implement reasonable measures to protect your data."', human:"There's no guarantee of security — just an effort, not a promise."},
-    {legal:'"Some features require access to your contacts or media."', human:"Certain tools won't work unless you let the site into parts of your device beyond what's needed."}
-  ];
-
-  function levelFor(rng, score){
-    const roll = rng();
-    if(score >= 75) return roll < 0.5 ? 'Low' : (roll < 0.85 ? 'Moderate' : 'High');
-    if(score >= 50) return roll < 0.25 ? 'Low' : (roll < 0.65 ? 'Moderate' : 'High');
-    return roll < 0.1 ? 'Low' : (roll < 0.35 ? 'Moderate' : 'High');
+  function scoreDescriptor(data){
+    return data.descriptor || (data.score >= 75
+      ? 'This site is generally clear about what it collects and why.'
+      : data.score >= 50
+        ? 'This site discloses some practices, but leaves real gaps unexplained.'
+        : "This site's disclosures are thin — much of its practice is left unstated.");
   }
-  function levelRank(l){ return l === 'High' ? 2 : (l === 'Moderate' ? 1 : 0); }
+
   function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
 
-  function generateSiteData(rawUrl){
-    const url = (rawUrl || 'example.com').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/$/,'') || 'example.com';
-    const rng = mulberry32(seedFromString(url));
-    const score = Math.round(rng()*61 + 32); // 32 - 93
-    const catLevels = CATEGORIES.map(function(c){ return {name:c, level:levelFor(rng, score)}; });
-    const ranked = catLevels.slice().sort(function(a,b){
-      const d = levelRank(b.level) - levelRank(a.level);
-      return d !== 0 ? d : (rng() - 0.5);
-    });
-    const afterlife = ranked.slice(0,2).map(function(c){
-      return {name:c.name, why:AFTERLIFE_BANK[c.name].why, consideration:AFTERLIFE_BANK[c.name].consideration};
-    });
-    const stages = ['User','Website','Analytics'];
-    if(score < 80) stages.push('Service Providers');
-    if(score < 65) stages.push('Advertising / Partners');
-    const translations = shuffled(rng, TRANSLATE_BANK).slice(0,3);
-    const clarity = Math.round(clamp(score + (rng()*16 - 8), 5, 98));
-    const control = Math.round(clamp(score - (rng()*15 + 5), 5, 95));
-    const highCount = catLevels.filter(function(c){ return c.level === 'High'; }).length;
-    return {
-      url: url, score: score, catLevels: catLevels, afterlife: afterlife,
-      stages: stages, translations: translations, clarity: clarity, control: control,
-      highCount: highCount
-    };
-  }
-
   // ---------- rendering: report ----------
-  function scoreDescriptor(score){
-    if(score >= 75) return 'This site is generally clear about what it collects and why.';
-    if(score >= 50) return 'This site discloses some practices, but leaves real gaps unexplained.';
-    return 'This site\'s disclosures are thin — much of its practice is left unstated.';
-  }
-
-  function renderReport(rawUrl){
-    const data = generateSiteData(rawUrl);
+  function applyReportData(data){
+    currentReportData = data;
     document.getElementById('report-url').textContent = data.url;
     document.getElementById('report-score-num').textContent = data.score + '%';
-    document.getElementById('report-explain').textContent = scoreDescriptor(data.score) + ' Transparency measures how clearly a site explains its data practices — not whether the site is safe.';
+    document.getElementById('report-explain').textContent = scoreDescriptor(data) + ' Transparency measures how clearly a site explains its data practices — not whether the site is safe.';
     renderIris(document.getElementById('report-iris'), data.score);
 
     document.getElementById('xray-center').textContent = data.url;
-    data.catLevels.forEach(function(c){
+    data.categories.forEach(function(c){
       const el = document.getElementById('xray-level-'+c.name.toLowerCase());
       if(el) el.textContent = c.level + ' collection';
     });
 
-    document.getElementById('journey-explain').textContent = data.stages.length > 3
-      ? 'Where your information travels once it leaves you.'
-      : 'This site\'s disclosed journey is short — data mostly stays between you, the site, and analytics.';
+    document.getElementById('journey-explain').textContent = data.stages.length > 2
+      ? "Where this site's own policy says your information travels once it leaves you."
+      : "This site's policy discloses a short journey — data mostly stays between you, the site, and analytics.";
     const track = document.getElementById('journey-track');
     track.innerHTML = '';
     data.stages.forEach(function(stage, i){
@@ -894,15 +850,22 @@
     }
   }
 
-  function renderCompare(rawA, rawB){
-    const a = generateSiteData(rawA || 'example.com');
-    const b = generateSiteData(rawB || 'rival-site.com');
+  function showError(err){
+    const code = (err && err.code) || 'analysis_failed';
+    document.getElementById('error-title').textContent = code === 'unreachable'
+      ? "We couldn't reach this website."
+      : "We couldn't find enough public information.";
+    document.getElementById('error-message').textContent = (err && err.message) || "This does not mean the website is unsafe. It means transparency is limited.";
+    goTo('error');
+  }
+
+  function renderCompareResult(a, b){
     document.getElementById('compare-head-a').textContent = a.url;
     document.getElementById('compare-head-b').textContent = b.url;
-    renderMeter('compare-a-data', a.highCount);
-    renderMeter('compare-b-data', b.highCount);
-    renderMeter('compare-a-tracking', clamp(Math.round(a.stages.length - 1), 0, 5));
-    renderMeter('compare-b-tracking', clamp(Math.round(b.stages.length - 1), 0, 5));
+    renderMeter('compare-a-data', a.categories.filter(function(c){return c.level==='High';}).length);
+    renderMeter('compare-b-data', b.categories.filter(function(c){return c.level==='High';}).length);
+    renderMeter('compare-a-tracking', clamp(a.stages.length - 1, 0, 5));
+    renderMeter('compare-b-tracking', clamp(b.stages.length - 1, 0, 5));
     renderMeter('compare-a-transparency', Math.round(a.score/20));
     renderMeter('compare-b-transparency', Math.round(b.score/20));
     renderMeter('compare-a-control', Math.round(a.control/20));
@@ -919,7 +882,14 @@
     });
     window.scrollTo({top:0, behavior:'smooth'});
     if(target === 'scanning'){ startScan(currentUrl); }
-    if(target === 'report'){ renderReport(currentUrl); }
+    if(target === 'report'){
+      const key = normalizeForKey(currentUrl);
+      if(currentReportData && currentReportData.url === key){
+        applyReportData(currentReportData);
+      } else {
+        goTo('scanning');
+      }
+    }
   }
   document.querySelectorAll('[data-target]').forEach(function(el){
     el.addEventListener('click', function(){ goTo(el.dataset.target); });
@@ -929,51 +899,88 @@
   let currentUrl = 'example.com';
   document.getElementById('analyze-btn').addEventListener('click', function(){
     const val = document.getElementById('url-input').value.trim();
-    currentUrl = val.length ? val.replace(/^https?:\/\//,'').replace(/\/$/,'') : 'example.com';
+    currentUrl = val.length ? val : 'example.com';
     goTo('scanning');
   });
   document.getElementById('url-input').addEventListener('keydown', function(e){
     if(e.key === 'Enter'){ document.getElementById('analyze-btn').click(); }
   });
 
-  // ---------- scanning sequence ----------
-  let scanTimers = [];
-  function startScan(url){
-    scanTimers.forEach(clearTimeout);
-    scanTimers = [];
-    document.getElementById('scan-url').textContent = url;
+  // ---------- scanning sequence (real fetch + Claude analysis under the hood) ----------
+  let scanToken = 0;
+  async function startScan(url){
+    const myToken = ++scanToken;
+    document.getElementById('scan-url').textContent = normalizeForKey(url);
     const stage = document.getElementById('scan-stage');
     stage.classList.remove('scanning-active');
     void stage.offsetWidth;
     stage.classList.add('scanning-active');
 
     const items = document.querySelectorAll('#scan-checklist li');
-    items.forEach(function(li){ li.classList.remove('visible'); li.innerHTML = li.dataset.text || li.textContent; li.dataset.text = li.textContent; });
+    const labels = ['Privacy Policy Found','Cookie Policy Found','Data Categories Identified','Usage Practices Mapped'];
+    items.forEach(function(li, i){ li.classList.remove('visible'); li.textContent = labels[i]; });
     document.getElementById('scan-cta').classList.remove('visible');
 
     const irisEl = document.getElementById('scan-iris');
     renderIris(irisEl, 5);
 
+    // gentle progress ticking while the real request is in flight — pace is
+    // illustrative, not tied to literal sub-steps of the server call
+    let pct = 5;
+    const ticker = setInterval(function(){
+      if(myToken !== scanToken) return;
+      pct = Math.min(pct + 4, 88);
+      renderIris(irisEl, pct);
+    }, 300);
+
+    let data, error;
+    try{
+      data = await analyzeSite(url);
+    } catch(e){
+      error = e;
+    }
+
+    if(myToken !== scanToken) return; // a newer scan superseded this one
+    clearInterval(ticker);
+
+    if(error){
+      showError(error);
+      return;
+    }
+
     items.forEach(function(li, i){
-      const t = setTimeout(function(){
-        li.innerHTML = '<span class="check-badge">✓</span> '+li.dataset.text;
+      setTimeout(function(){
+        if(myToken !== scanToken) return;
+        li.innerHTML = '<span class="check-badge">✓</span> ' + labels[i];
         li.classList.add('visible');
-        renderIris(irisEl, 5 + (i+1)*19);
-      }, 650 * (i+1));
-      scanTimers.push(t);
+        if(i === items.length - 1) renderIris(irisEl, data.score);
+      }, 280 * (i+1));
     });
 
-    const finalT = setTimeout(function(){
+    setTimeout(function(){
+      if(myToken !== scanToken) return;
       document.getElementById('scan-cta').classList.add('visible');
-    }, 650 * (items.length+1));
-    scanTimers.push(finalT);
+      applyReportData(data);
+    }, 280 * (items.length + 1));
   }
 
   // ---------- compare screen ----------
-  document.getElementById('compare-btn').addEventListener('click', function(){
-    const a = document.getElementById('compare-input-a').value.trim();
-    const b = document.getElementById('compare-input-b').value.trim();
-    renderCompare(a, b);
+  document.getElementById('compare-btn').addEventListener('click', async function(){
+    const aVal = document.getElementById('compare-input-a').value.trim() || 'example.com';
+    const bVal = document.getElementById('compare-input-b').value.trim() || 'rival-site.com';
+    const btn = document.getElementById('compare-btn');
+    const status = document.getElementById('compare-status');
+    btn.disabled = true;
+    status.textContent = 'Comparing…';
+    try{
+      const [a, b] = await Promise.all([analyzeSite(aVal), analyzeSite(bVal)]);
+      renderCompareResult(a, b);
+      status.textContent = '';
+    } catch(e){
+      status.textContent = e.message || "Couldn't complete this comparison.";
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // ---------- legal / human toggle ----------
