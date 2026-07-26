@@ -241,6 +241,7 @@
   .meter{display:flex; gap:3px;}
   .meter span{width:16px; height:8px; border-radius:2px; background:var(--border);}
   .meter span.on{background:var(--highlight);}
+  .compare-result-hidden{display:none;}
 
   /* ---------- badge ---------- */
   .badge{max-width:340px; margin:0 auto; text-align:left;}
@@ -286,6 +287,7 @@
     <button data-target="landing" class="active">Landing</button>
     <button data-target="scanning">Scanning</button>
     <button data-target="report">Report</button>
+    <button data-target="compare">Compare</button>
     <button data-target="error">No Access</button>
     <button data-target="about">About</button>
   </div>
@@ -382,14 +384,14 @@
   <section class="screen" id="screen-report">
     <div class="section">
       <div class="card report-top">
-        <div class="iris-wrap" data-percent="78">
+        <div class="iris-wrap" id="report-iris" data-percent="78">
           <div class="iris-glow"></div>
-          <div class="iris-score-label"><span class="num">78%</span><span class="unit">TRANSPARENT</span></div>
+          <div class="iris-score-label"><span class="num" id="report-score-num">78%</span><span class="unit">TRANSPARENT</span></div>
         </div>
         <div class="meta">
           <span class="eyebrow" id="report-url">example.com</span>
           <h2 class="display">Privacy Overview</h2>
-          <p class="lede">This measures how clearly the website explains its data practices — not whether the site is safe. A higher number means the site is more forthcoming about what it collects and why.</p>
+          <p class="lede" id="report-explain">This measures how clearly the website explains its data practices — not whether the site is safe. A higher number means the site is more forthcoming about what it collects and why.</p>
         </div>
       </div>
     </div>
@@ -407,21 +409,21 @@
           <line x1="400" y1="210" x2="400" y2="390" stroke="var(--border)" stroke-width="1.5"/>
           <line x1="400" y1="210" x2="120" y2="320" stroke="var(--border)" stroke-width="1.5"/>
         </svg>
-        <div class="xray-center">example.com</div>
+        <div class="xray-center" id="xray-center">example.com</div>
         <div class="xray-node" style="top:6%; left:50%; transform:translateX(-50%);">
-          <div class="cat">Identity</div><div class="level">High collection</div>
+          <div class="cat">Identity</div><div class="level" id="xray-level-identity">High collection</div>
         </div>
         <div class="xray-node" style="top:22%; left:82%;">
-          <div class="cat">Location</div><div class="level">Moderate collection</div>
+          <div class="cat">Location</div><div class="level" id="xray-level-location">Moderate collection</div>
         </div>
         <div class="xray-node" style="top:74%; left:85%;">
-          <div class="cat">Device</div><div class="level">High collection</div>
+          <div class="cat">Device</div><div class="level" id="xray-level-device">High collection</div>
         </div>
         <div class="xray-node" style="top:88%; left:50%; transform:translateX(-50%);">
-          <div class="cat">Activity</div><div class="level">High collection</div>
+          <div class="cat">Activity</div><div class="level" id="xray-level-activity">High collection</div>
         </div>
         <div class="xray-node" style="top:74%; left:2%;">
-          <div class="cat">Preferences</div><div class="level">Low collection</div>
+          <div class="cat">Preferences</div><div class="level" id="xray-level-preferences">Low collection</div>
         </div>
       </div>
     </div>
@@ -430,8 +432,8 @@
     <div class="section section-tight">
       <span class="eyebrow">Feature 02</span>
       <h2 class="display" style="font-size:1.7rem;">Data Journey Map</h2>
-      <p class="lede" style="margin-bottom:0;">Where your information travels once it leaves you.</p>
-      <div class="journey">
+      <p class="lede" style="margin-bottom:0;" id="journey-explain">Where your information travels once it leaves you.</p>
+      <div class="journey" id="journey-track">
         <div class="stage-chip"><div class="label">User</div></div>
         <div class="arrow"></div>
         <div class="stage-chip"><div class="label">Website</div></div>
@@ -449,7 +451,7 @@
       <span class="eyebrow">Feature 03</span>
       <h2 class="display" style="font-size:1.7rem;">Digital Afterlife</h2>
       <p class="lede" style="margin-bottom:0;">What tends to outlast the moment you shared it.</p>
-      <div class="grid-2" style="margin-top:20px;">
+      <div class="grid-2" style="margin-top:20px;" id="afterlife-grid">
         <div class="plaque">
           <div class="field">Email</div>
           <div class="field" style="margin-top:0;">Why collected</div>
@@ -491,69 +493,33 @@
       </div>
     </div>
 
-    <!-- Compare Mode -->
-    <div class="section section-tight">
-      <span class="eyebrow">Feature 05</span>
-      <h2 class="display" style="font-size:1.7rem;">Compare Mode</h2>
-      <p class="lede" style="margin-bottom:0;">Website A vs Website B.</p>
-      <div class="card" style="margin-top:20px; overflow-x:auto;">
-        <table class="compare-table">
-          <thead>
-            <tr><th></th><th>example.com</th><th>rival-site.com</th></tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Data collected</td>
-              <td><div class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div></td>
-              <td><div class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span></div></td>
-            </tr>
-            <tr>
-              <td>Tracking</td>
-              <td><div class="meter"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div></td>
-              <td><div class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></td>
-            </tr>
-            <tr>
-              <td>Transparency</td>
-              <td><div class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div></td>
-              <td><div class="meter"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div></td>
-            </tr>
-            <tr>
-              <td>User control</td>
-              <td><div class="meter"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div></td>
-              <td><div class="meter"><span class="on"></span><span></span><span></span><span></span><span></span></div></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
     <!-- Transparency Badge -->
     <div class="section section-tight">
-      <span class="eyebrow">Feature 06</span>
+      <span class="eyebrow">Feature 05</span>
       <h2 class="display" style="font-size:1.7rem;">Transparency Badge</h2>
       <div class="card badge" style="margin-top:20px;">
         <div class="badge-head">
           <div class="brand-mini">
-            <div class="iris-wrap" style="width:20px;height:20px;" data-percent="65"></div>
+            <div class="iris-wrap" id="badge-iris" style="width:20px;height:20px;" data-percent="65"></div>
             Aperture Review
           </div>
         </div>
-        <div class="site">example.com</div>
+        <div class="site" id="badge-site">example.com</div>
         <div class="bar-row">
-          <div class="bar-label"><span>Transparency</span><span>8/10</span></div>
-          <div class="bar-track">
+          <div class="bar-label"><span>Transparency</span><span id="badge-transparency-num">8/10</span></div>
+          <div class="bar-track" id="badge-transparency-bar">
             <div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg"></div><div class="bar-seg"></div>
           </div>
         </div>
         <div class="bar-row">
-          <div class="bar-label"><span>Data clarity</span><span>7/10</span></div>
-          <div class="bar-track">
+          <div class="bar-label"><span>Data clarity</span><span id="badge-clarity-num">7/10</span></div>
+          <div class="bar-track" id="badge-clarity-bar">
             <div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg"></div><div class="bar-seg"></div><div class="bar-seg"></div>
           </div>
         </div>
         <div class="bar-row">
-          <div class="bar-label"><span>Control</span><span>6/10</span></div>
-          <div class="bar-track">
+          <div class="bar-label"><span>Control</span><span id="badge-control-num">6/10</span></div>
+          <div class="bar-track" id="badge-control-bar">
             <div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg on"></div><div class="bar-seg"></div><div class="bar-seg"></div><div class="bar-seg"></div><div class="bar-seg"></div>
           </div>
         </div>
@@ -562,7 +528,7 @@
 
     <!-- Before You Share -->
     <div class="section section-tight">
-      <span class="eyebrow">Feature 07</span>
+      <span class="eyebrow">Feature 06</span>
       <h2 class="display" style="font-size:1.7rem;">Before You Share</h2>
       <p class="lede" style="margin-bottom:20px;">Before creating an account:</p>
       <ul class="final-checklist">
@@ -571,6 +537,57 @@
         <li><span class="check-badge">✓</span> Can I delete my data later?</li>
         <li><span class="check-badge">✓</span> Am I comfortable sharing this?</li>
       </ul>
+    </div>
+  </section>
+
+  <!-- ================= COMPARE ================= -->
+  <section class="screen" id="screen-compare">
+    <div class="section">
+      <span class="eyebrow">Compare Mode</span>
+      <h2 class="display" style="font-size:2rem;">Website A vs Website B</h2>
+      <p class="lede" style="margin-top:10px;">Paste two addresses to see how their privacy practices stack up.</p>
+
+      <div class="grid-2" style="margin-top:28px;">
+        <div class="url-bar" style="max-width:none;">
+          <input type="text" id="compare-input-a" placeholder="Website A…">
+        </div>
+        <div class="url-bar" style="max-width:none;">
+          <input type="text" id="compare-input-b" placeholder="Website B…">
+        </div>
+      </div>
+      <div style="margin-top:20px;">
+        <button class="btn" id="compare-btn">Compare</button>
+      </div>
+
+      <div class="card compare-result-hidden" style="margin-top:36px; overflow-x:auto;" id="compare-result">
+        <table class="compare-table">
+          <thead>
+            <tr><th></th><th id="compare-head-a">example.com</th><th id="compare-head-b">rival-site.com</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Data collected</td>
+              <td><div class="meter" id="compare-a-data"></div></td>
+              <td><div class="meter" id="compare-b-data"></div></td>
+            </tr>
+            <tr>
+              <td>Tracking</td>
+              <td><div class="meter" id="compare-a-tracking"></div></td>
+              <td><div class="meter" id="compare-b-tracking"></div></td>
+            </tr>
+            <tr>
+              <td>Transparency</td>
+              <td><div class="meter" id="compare-a-transparency"></div></td>
+              <td><div class="meter" id="compare-b-transparency"></div></td>
+            </tr>
+            <tr>
+              <td>User control</td>
+              <td><div class="meter" id="compare-a-control"></div></td>
+              <td><div class="meter" id="compare-b-control"></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -699,6 +716,200 @@
     hero.appendChild(d);
   });
 
+  // ---------- deterministic per-site data ----------
+  // Note: this simulates variation per domain using a seeded generator, since a static
+  // front end can't fetch and read an arbitrary site's real privacy policy (no backend, CORS).
+  // Same URL always produces the same result; different URLs produce different results.
+  function seedFromString(str){
+    let h = 0;
+    for(let i=0;i<str.length;i++){ h = (Math.imul(31,h) + str.charCodeAt(i)) | 0; }
+    return h >>> 0;
+  }
+  function mulberry32(a){
+    return function(){
+      let t = a += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function shuffled(rng, arr){
+    const a = arr.slice();
+    for(let i=a.length-1;i>0;i--){
+      const j = Math.floor(rng()*(i+1));
+      const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
+  }
+
+  const CATEGORIES = ['Identity','Location','Device','Activity','Preferences'];
+  const AFTERLIFE_BANK = {
+    Identity:{why:'Account creation & sign-in access', consideration:'May remain linked to your identity across sessions and future visits.'},
+    Location:{why:'Location-based features', consideration:'Creates location-based activity patterns over time.'},
+    Device:{why:'Fraud prevention & device fingerprinting', consideration:'Can be used to recognize you across visits, even without an account.'},
+    Activity:{why:'Personalization & analytics', consideration:'Builds a behavioral profile that can outlast a single visit.'},
+    Preferences:{why:'Customizing your experience', consideration:'Usually lower-risk, but may still be shared with partners.'}
+  };
+  const TRANSLATE_BANK = [
+    {legal:'"We may process information for personalization."', human:'This may mean your activity is used to customize what you see.'},
+    {legal:'"We may share data with trusted third parties for business purposes."', human:'Your information can be passed to outside companies the site works with.'},
+    {legal:'"Certain data may be retained as required by law or legitimate business need."', human:'Some of your data can be kept indefinitely, even after you stop using the site.'},
+    {legal:'"We use cookies and similar technologies to enhance your experience."', human:'Small trackers follow what you do on the site, sometimes across other sites too.'},
+    {legal:'"Aggregated or de-identified data may be shared without restriction."', human:"Your data can be bundled with others' and shared freely, even without your name attached."},
+    {legal:'"By using our services, you consent to this policy."', human:'Just visiting the site counts as agreeing, whether you read this or not.'},
+    {legal:'"We may update this policy at any time without direct notice."', human:'The rules can change later, and you may not be told when they do.'},
+    {legal:'"Information may be transferred and processed in other countries."', human:'Your data might leave your country, where different privacy laws may apply.'},
+    {legal:'"We implement reasonable measures to protect your data."', human:"There's no guarantee of security — just an effort, not a promise."},
+    {legal:'"Some features require access to your contacts or media."', human:"Certain tools won't work unless you let the site into parts of your device beyond what's needed."}
+  ];
+
+  function levelFor(rng, score){
+    const roll = rng();
+    if(score >= 75) return roll < 0.5 ? 'Low' : (roll < 0.85 ? 'Moderate' : 'High');
+    if(score >= 50) return roll < 0.25 ? 'Low' : (roll < 0.65 ? 'Moderate' : 'High');
+    return roll < 0.1 ? 'Low' : (roll < 0.35 ? 'Moderate' : 'High');
+  }
+  function levelRank(l){ return l === 'High' ? 2 : (l === 'Moderate' ? 1 : 0); }
+  function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+
+  function generateSiteData(rawUrl){
+    const url = (rawUrl || 'example.com').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/$/,'') || 'example.com';
+    const rng = mulberry32(seedFromString(url));
+    const score = Math.round(rng()*61 + 32); // 32 - 93
+    const catLevels = CATEGORIES.map(function(c){ return {name:c, level:levelFor(rng, score)}; });
+    const ranked = catLevels.slice().sort(function(a,b){
+      const d = levelRank(b.level) - levelRank(a.level);
+      return d !== 0 ? d : (rng() - 0.5);
+    });
+    const afterlife = ranked.slice(0,2).map(function(c){
+      return {name:c.name, why:AFTERLIFE_BANK[c.name].why, consideration:AFTERLIFE_BANK[c.name].consideration};
+    });
+    const stages = ['User','Website','Analytics'];
+    if(score < 80) stages.push('Service Providers');
+    if(score < 65) stages.push('Advertising / Partners');
+    const translations = shuffled(rng, TRANSLATE_BANK).slice(0,3);
+    const clarity = Math.round(clamp(score + (rng()*16 - 8), 5, 98));
+    const control = Math.round(clamp(score - (rng()*15 + 5), 5, 95));
+    const highCount = catLevels.filter(function(c){ return c.level === 'High'; }).length;
+    return {
+      url: url, score: score, catLevels: catLevels, afterlife: afterlife,
+      stages: stages, translations: translations, clarity: clarity, control: control,
+      highCount: highCount
+    };
+  }
+
+  // ---------- rendering: report ----------
+  function scoreDescriptor(score){
+    if(score >= 75) return 'This site is generally clear about what it collects and why.';
+    if(score >= 50) return 'This site discloses some practices, but leaves real gaps unexplained.';
+    return 'This site\'s disclosures are thin — much of its practice is left unstated.';
+  }
+
+  function renderReport(rawUrl){
+    const data = generateSiteData(rawUrl);
+    document.getElementById('report-url').textContent = data.url;
+    document.getElementById('report-score-num').textContent = data.score + '%';
+    document.getElementById('report-explain').textContent = scoreDescriptor(data.score) + ' Transparency measures how clearly a site explains its data practices — not whether the site is safe.';
+    renderIris(document.getElementById('report-iris'), data.score);
+
+    document.getElementById('xray-center').textContent = data.url;
+    data.catLevels.forEach(function(c){
+      const el = document.getElementById('xray-level-'+c.name.toLowerCase());
+      if(el) el.textContent = c.level + ' collection';
+    });
+
+    document.getElementById('journey-explain').textContent = data.stages.length > 3
+      ? 'Where your information travels once it leaves you.'
+      : 'This site\'s disclosed journey is short — data mostly stays between you, the site, and analytics.';
+    const track = document.getElementById('journey-track');
+    track.innerHTML = '';
+    data.stages.forEach(function(stage, i){
+      const chip = document.createElement('div');
+      chip.className = 'stage-chip';
+      chip.innerHTML = '<div class="label">'+stage+'</div>';
+      track.appendChild(chip);
+      if(i < data.stages.length - 1){
+        const arrow = document.createElement('div');
+        arrow.className = 'arrow';
+        track.appendChild(arrow);
+      }
+    });
+
+    const afterlifeGrid = document.getElementById('afterlife-grid');
+    afterlifeGrid.innerHTML = '';
+    data.afterlife.forEach(function(item){
+      const plaque = document.createElement('div');
+      plaque.className = 'plaque';
+      plaque.innerHTML =
+        '<div class="field">'+item.name+'</div>'+
+        '<div class="field" style="margin-top:0;">Why collected</div>'+
+        '<div class="val">'+item.why+'</div>'+
+        '<div class="field">Possible consideration</div>'+
+        '<div class="val">'+item.consideration+'</div>';
+      afterlifeGrid.appendChild(plaque);
+    });
+
+    const translateCard = document.getElementById('translate-card');
+    translateCard.innerHTML = '';
+    data.translations.forEach(function(t){
+      const line = document.createElement('div');
+      line.className = 'translate-line';
+      line.innerHTML =
+        '<div class="legal-text"><p class="lede">'+t.legal+'</p></div>'+
+        '<div class="human-text"><p class="lede">'+t.human+'</p></div>';
+      translateCard.appendChild(line);
+    });
+    translateCard.classList.remove('mode-legal','mode-human');
+    translateCard.classList.add('mode-legal');
+    document.querySelectorAll('#translate-toggle button').forEach(function(b){
+      b.classList.toggle('active', b.dataset.mode === 'legal');
+    });
+
+    document.getElementById('badge-site').textContent = data.url;
+    renderIris(document.getElementById('badge-iris'), data.score);
+    renderBar('badge-transparency', data.score);
+    renderBar('badge-clarity', data.clarity);
+    renderBar('badge-control', data.control);
+  }
+
+  function renderBar(prefix, score){
+    const filled = clamp(Math.round(score/10), 0, 10);
+    document.getElementById(prefix+'-num').textContent = filled + '/10';
+    const track = document.getElementById(prefix+'-bar');
+    track.innerHTML = '';
+    for(let i=0;i<10;i++){
+      const seg = document.createElement('div');
+      seg.className = 'bar-seg' + (i < filled ? ' on' : '');
+      track.appendChild(seg);
+    }
+  }
+
+  function renderMeter(containerId, valueOutOf5){
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    for(let i=0;i<5;i++){
+      const span = document.createElement('span');
+      if(i < valueOutOf5) span.className = 'on';
+      el.appendChild(span);
+    }
+  }
+
+  function renderCompare(rawA, rawB){
+    const a = generateSiteData(rawA || 'example.com');
+    const b = generateSiteData(rawB || 'rival-site.com');
+    document.getElementById('compare-head-a').textContent = a.url;
+    document.getElementById('compare-head-b').textContent = b.url;
+    renderMeter('compare-a-data', a.highCount);
+    renderMeter('compare-b-data', b.highCount);
+    renderMeter('compare-a-tracking', clamp(Math.round(a.stages.length - 1), 0, 5));
+    renderMeter('compare-b-tracking', clamp(Math.round(b.stages.length - 1), 0, 5));
+    renderMeter('compare-a-transparency', Math.round(a.score/20));
+    renderMeter('compare-b-transparency', Math.round(b.score/20));
+    renderMeter('compare-a-control', Math.round(a.control/20));
+    renderMeter('compare-b-control', Math.round(b.control/20));
+    document.getElementById('compare-result').classList.remove('compare-result-hidden');
+  }
+
   // ---------- nav switching ----------
   function goTo(target){
     document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
@@ -708,7 +919,7 @@
     });
     window.scrollTo({top:0, behavior:'smooth'});
     if(target === 'scanning'){ startScan(currentUrl); }
-    if(target === 'report'){ document.getElementById('report-url').textContent = currentUrl; }
+    if(target === 'report'){ renderReport(currentUrl); }
   }
   document.querySelectorAll('[data-target]').forEach(function(el){
     el.addEventListener('click', function(){ goTo(el.dataset.target); });
@@ -757,6 +968,13 @@
     }, 650 * (items.length+1));
     scanTimers.push(finalT);
   }
+
+  // ---------- compare screen ----------
+  document.getElementById('compare-btn').addEventListener('click', function(){
+    const a = document.getElementById('compare-input-a').value.trim();
+    const b = document.getElementById('compare-input-b').value.trim();
+    renderCompare(a, b);
+  });
 
   // ---------- legal / human toggle ----------
   const toggle = document.getElementById('translate-toggle');
