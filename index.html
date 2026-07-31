@@ -721,7 +721,12 @@
   // Fetches pages through a public CORS-proxy (since browsers block reading
   // cross-origin responses directly) and scores the real policy text locally with
   // plain keyword/pattern rules. No AI model, no API key, no backend to run.
-  const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+  const CORS_PROXIES = [
+    function(u){ return 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u); },
+    function(u){ return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+    function(u){ return 'https://corsproxy.io/?url=' + encodeURIComponent(u); },
+    function(u){ return 'https://thingproxy.freeboard.io/fetch/' + u; }
+  ];
   const FETCH_TIMEOUT_MS = 9000;
 
   const reportCache = new Map(); // hostname -> analysis result
@@ -737,17 +742,22 @@
   }
 
   async function fetchViaProxy(url){
-    const controller = new AbortController();
-    const timer = setTimeout(function(){ controller.abort(); }, FETCH_TIMEOUT_MS);
-    try{
-      const resp = await fetch(CORS_PROXY + encodeURIComponent(url), { signal: controller.signal });
-      if(!resp.ok) return null;
-      return await resp.text();
-    } catch(e){
-      return null;
-    } finally {
-      clearTimeout(timer);
+    for(let i=0;i<CORS_PROXIES.length;i++){
+      const controller = new AbortController();
+      const timer = setTimeout(function(){ controller.abort(); }, FETCH_TIMEOUT_MS);
+      try{
+        const proxied = CORS_PROXIES[i](url);
+        const resp = await fetch(proxied, { signal: controller.signal });
+        clearTimeout(timer);
+        if(!resp.ok) continue;
+        const text = await resp.text();
+        if(text && text.length > 80) return text;
+      } catch(e){
+        clearTimeout(timer);
+        // try the next proxy
+      }
     }
+    return null;
   }
 
   function findPolicyLink(html, baseUrl){
